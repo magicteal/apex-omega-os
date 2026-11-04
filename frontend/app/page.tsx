@@ -5,6 +5,13 @@ import PyramidLadder from "../components/PyramidLadder";
 import VaultLedger from "../components/VaultLedger";
 import TradeHistory from "../components/TradeHistory";
 
+const BACKEND_HTTP = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const BACKEND_WS =
+  process.env.NEXT_PUBLIC_BACKEND_WS_URL ||
+  (BACKEND_HTTP.startsWith("https://")
+    ? BACKEND_HTTP.replace("https://", "wss://")
+    : BACKEND_HTTP.replace("http://", "ws://"));
+
 export default function CommandCenterPage() {
   const [telemetry, setTelemetry] = useState<any>(null);
   const [selectedSymbol, setSelectedSymbol] = useState("SOL/USDT:USDT");
@@ -16,7 +23,7 @@ export default function CommandCenterPage() {
 
     const connect = () => {
       try {
-        ws = new WebSocket("ws://localhost:8000/ws/telemetry");
+        ws = new WebSocket(`${BACKEND_WS}/ws/telemetry`);
         ws.onmessage = (evt) => {
           try {
             const data = JSON.parse(evt.data);
@@ -32,15 +39,30 @@ export default function CommandCenterPage() {
     };
 
     connect();
+
+    // Fallback polling every 5s if WebSocket is closed
+    const pollInterval = setInterval(async () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        try {
+          const res = await fetch(`${BACKEND_HTTP}/api/state`);
+          if (res.ok) {
+            const data = await res.json();
+            setTelemetry(data);
+          }
+        } catch (e) {}
+      }
+    }, 5000);
+
     return () => {
       if (ws) ws.close();
       if (timer) clearTimeout(timer);
+      clearInterval(pollInterval);
     };
   }, []);
 
   // Debug Synthetic Breakout (+1.2 ATR spike to test pyramid scale-in steps)
   const triggerBreakoutTick = async () => {
-    const res = await fetch("http://localhost:8000/api/simulate-tick", {
+    const res = await fetch(`${BACKEND_HTTP}/api/simulate-tick`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ symbol: selectedSymbol, atr_step: 1.2 }),
@@ -50,14 +72,14 @@ export default function CommandCenterPage() {
   };
 
   const triggerKillSwitch = async () => {
-    const res = await fetch("http://localhost:8000/api/kill-switch", { method: "POST" });
+    const res = await fetch(`${BACKEND_HTTP}/api/kill-switch`, { method: "POST" });
     const data = await res.json();
     if (data.telemetry) setTelemetry(data.telemetry);
   };
 
   const toggleMode = async () => {
     const nextMode = telemetry?.mode === "PAPER" ? "LIVE" : "PAPER";
-    await fetch("http://localhost:8000/api/mode", {
+    await fetch(`${BACKEND_HTTP}/api/mode`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: nextMode }),
@@ -65,7 +87,7 @@ export default function CommandCenterPage() {
   };
 
   const runMonteCarlo = async () => {
-    const res = await fetch("http://localhost:8000/api/monte-carlo", { method: "POST" });
+    const res = await fetch(`${BACKEND_HTTP}/api/monte-carlo`, { method: "POST" });
     setMcResult(await res.json());
   };
 

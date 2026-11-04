@@ -62,6 +62,17 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+@app.get("/health")
+async def health_check() -> Dict[str, Any]:
+    return {
+        "status": "healthy",
+        "service": "APEX-OMEGA OS Backend",
+        "utc_time": datetime.now(timezone.utc).isoformat()
+    }
+
+
+
 class ModeRequest(BaseModel):
     mode: str
 
