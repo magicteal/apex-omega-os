@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import sys
 from pathlib import Path
 from typing import Dict, Any, List
+import httpx
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -51,6 +52,56 @@ UNIVERSE = [
 ]
 
 STATE_PATH = Path(__file__).parent / "bot_state.json"
+
+BINANCE_US_MAP = {
+    "SOL/USDT:USDT": "SOLUSDT",
+    "BTC/USDT:USDT": "BTCUSDT",
+    "ETH/USDT:USDT": "ETHUSDT",
+    "DOGE/USDT:USDT": "DOGEUSDT",
+    "XRP/USDT:USDT": "XRPUSDT",
+    "BNB/USDT:USDT": "BNBUSDT",
+    "AVAX/USDT:USDT": "AVAXUSDT",
+    "LINK/USDT:USDT": "LINKUSDT",
+}
+
+async def fetch_resilient_tickers(exchange) -> Dict[str, float]:
+    """Fetches real-time market prices from Binance USD-M futures or falls back to Binance.US & Coinbase if geo-restricted (HTTP 451)."""
+    prices: Dict[str, float] = {}
+    if exchange is not None:
+        try:
+            tickers = await exchange.fetch_tickers(UNIVERSE)
+            for sym, tk in tickers.items():
+                if tk.get("last"):
+                    prices[sym] = round(tk["last"], 4 if tk["last"] < 10 else 2)
+            if len(prices) >= 8:
+                return prices
+        except Exception:
+            pass
+
+    # Automatic multi-feed fallback for US server locations & restricted IPs
+    try:
+        async with httpx.AsyncClient(timeout=3.5) as client:
+            r = await client.get("https://api.binance.us/api/v3/ticker/price")
+            if r.status_code == 200:
+                raw = {item["symbol"]: float(item["price"]) for item in r.json()}
+                for sym, bus in BINANCE_US_MAP.items():
+                    if bus in raw:
+                        p = raw[bus]
+                        prices[sym] = round(p, 4 if p < 10 else 2)
+
+            r_sui = await client.get("https://api.coinbase.com/v2/prices/SUI-USD/spot")
+            if r_sui.status_code == 200:
+                p_sui = float(r_sui.json()["data"]["amount"])
+                prices["SUI/USDT:USDT"] = round(p_sui, 4)
+
+            r_pepe = await client.get("https://api.coinbase.com/v2/prices/PEPE-USD/spot")
+            if r_pepe.status_code == 200:
+                p_pepe = float(r_pepe.json()["data"]["amount"]) * 1000.0
+                prices["1000PEPE/USDT:USDT"] = round(p_pepe, 6)
+    except Exception:
+        pass
+
+    return prices
 
 app = FastAPI(title="APEX-OMEGA OS Backend", version="2.0.0")
 app.add_middleware(
@@ -215,16 +266,16 @@ class ApexOmegaDaemon:
 
     def _seed_synthetic_universe(self) -> None:
         defaults = [
-            ("SOL/USDT:USDT", 93.55, 0.30, 0.78, True, 6, 0.0024, 2.34, 0.0185, "COILING", False),
-            ("BTC/USDT:USDT", 77800.00, 195.00, 0.89, True, 4, 0.0014, 1.82, 0.0132, "COILING", False),
-            ("ETH/USDT:USDT", 2288.50, 7.80, 0.94, True, 3, 0.0007, 1.41, 0.0068, "COILING", False),
-            ("SUI/USDT:USDT", 0.8960, 0.0050, 0.81, True, 5, 0.0029, 2.61, 0.0241, "COILING", False),
-            ("DOGE/USDT:USDT", 0.0752, 0.0003, 1.18, False, 0, -0.0016, 1.92, -0.0154, "NEUTRAL", False),
-            ("XRP/USDT:USDT", 1.2790, 0.0120, 0.83, True, 5, 0.0021, 2.48, 0.0194, "COILING", False),
-            ("BNB/USDT:USDT", 699.80, 4.20, 0.91, True, 3, 0.0009, 1.52, 0.0082, "COILING", False),
-            ("AVAX/USDT:USDT", 8.520, 0.085, 0.79, True, 6, 0.0026, 2.19, 0.0168, "COILING", False),
-            ("LINK/USDT:USDT", 11.080, 0.110, 0.86, True, 4, 0.0018, 1.96, 0.0145, "COILING", False),
-            ("1000PEPE/USDT:USDT", 0.00484, 0.00005, 0.76, True, 7, 0.0033, 2.84, 0.0275, "COILING", False),
+            ("SOL/USDT:USDT", 94.80, 0.35, 0.78, True, 6, 0.0024, 2.34, 0.0185, "COILING", False),
+            ("BTC/USDT:USDT", 80150.00, 210.00, 0.89, True, 4, 0.0014, 1.82, 0.0132, "COILING", False),
+            ("ETH/USDT:USDT", 2420.00, 8.50, 0.94, True, 3, 0.0007, 1.41, 0.0068, "COILING", False),
+            ("SUI/USDT:USDT", 0.9240, 0.0055, 0.81, True, 5, 0.0029, 2.61, 0.0241, "COILING", False),
+            ("DOGE/USDT:USDT", 0.0766, 0.0004, 1.18, False, 0, -0.0016, 1.92, -0.0154, "NEUTRAL", False),
+            ("XRP/USDT:USDT", 1.3040, 0.0130, 0.83, True, 5, 0.0021, 2.48, 0.0194, "COILING", False),
+            ("BNB/USDT:USDT", 715.50, 4.50, 0.91, True, 3, 0.0009, 1.52, 0.0082, "COILING", False),
+            ("AVAX/USDT:USDT", 8.780, 0.090, 0.79, True, 6, 0.0026, 2.19, 0.0168, "COILING", False),
+            ("LINK/USDT:USDT", 11.400, 0.120, 0.86, True, 4, 0.0018, 1.96, 0.0145, "COILING", False),
+            ("1000PEPE/USDT:USDT", 0.00495, 0.00005, 0.76, True, 7, 0.0033, 2.84, 0.0275, "COILING", False),
         ]
         for sym, price, atr, comp, sq, sq_bars, slope, rvol, roc5, regime, valid in defaults:
             self.scanner_cache[sym] = {
@@ -247,6 +298,7 @@ class ApexOmegaDaemon:
             }
 
     async def scan_universe_once(self) -> None:
+        used_fallback = False
         if ccxt_async is not None:
             exchange = ccxt_async.binanceusdm({"enableRateLimit": True, "timeout": 4000})
             try:
@@ -257,11 +309,39 @@ class ApexOmegaDaemon:
                             sig = self.squeeze_engine.evaluate_ohlcv(symbol, ohlcv)
                             self.scanner_cache[symbol] = sig.to_dict()
                     except Exception:
-                        pass
+                        used_fallback = True
+                        break
             except Exception:
-                pass
+                used_fallback = True
             finally:
                 await exchange.close()
+        else:
+            used_fallback = True
+
+        if used_fallback:
+            # Multi-feed candle evaluation for US server instances (Binance.US & Coinbase)
+            try:
+                async with httpx.AsyncClient(timeout=4.0) as client:
+                    for symbol in UNIVERSE:
+                        ohlcv = []
+                        if symbol in BINANCE_US_MAP:
+                            bus = BINANCE_US_MAP[symbol]
+                            r = await client.get(f"https://api.binance.us/api/v3/klines?symbol={bus}&interval=15m&limit=120")
+                            if r.status_code == 200:
+                                raw = r.json()
+                                ohlcv = [[row[0], float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5])] for row in raw]
+                        elif symbol == "SUI/USDT:USDT":
+                            r = await client.get("https://api.exchange.coinbase.com/products/SUI-USD/candles?granularity=900")
+                            if r.status_code == 200:
+                                raw = r.json()
+                                raw.reverse()
+                                ohlcv = [[row[0]*1000, float(row[3]), float(row[2]), float(row[1]), float(row[4]), float(row[5])] for row in raw[-120:]]
+
+                        if len(ohlcv) >= 60:
+                            sig = self.squeeze_engine.evaluate_ohlcv(symbol, ohlcv)
+                            self.scanner_cache[symbol] = sig.to_dict()
+            except Exception:
+                pass
 
     def build_telemetry_payload(self) -> Dict[str, Any]:
         unrealized = (
@@ -298,6 +378,17 @@ class ApexOmegaDaemon:
         winning_trades = sum(1 for t in history if t.get("realized_pnl_inr", 0) > 0)
         win_rate = round((winning_trades / max(len(history), 1)) * 100, 1) if history else 0.0
 
+        # Suppress stale event toasts: only broadcast fresh events created in the last 15s
+        active_event = None
+        if self.last_event and isinstance(self.last_event, dict) and self.last_event.get("timestamp"):
+            try:
+                ev_time = datetime.fromisoformat(self.last_event["timestamp"].replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - ev_time).total_seconds()
+                if age <= 15:
+                    active_event = self.last_event
+            except Exception:
+                pass
+
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "mode": self.router.mode,
@@ -317,7 +408,7 @@ class ApexOmegaDaemon:
             "total_realized_pnl": total_realized_pnl,
             "siphon_history": self.state.get("siphon_history", []),
             "equity_curve": self.state.get("equity_curve", [])[-30:],
-            "last_event": self.last_event,
+            "last_event": active_event,
         }
 
 
@@ -334,15 +425,11 @@ async def startup_daemon() -> None:
         cycle_count = 0
         while True:
             try:
-                # 1. Real-time Live Ticker Updates from Binance (every 1.5s)
-                if exchange is not None:
-                    try:
-                        tickers = await exchange.fetch_tickers(UNIVERSE)
-                        for sym, tk in tickers.items():
-                            if sym in daemon.scanner_cache and tk.get("last"):
-                                daemon.scanner_cache[sym]["price"] = round(tk["last"], 4 if tk["last"] < 10 else 2)
-                    except Exception:
-                        pass
+                # 1. Real-time Live Ticker Updates (Binance USD-M + Multi-Feed Fallback every 1.5s)
+                live_prices = await fetch_resilient_tickers(exchange)
+                for sym, p in live_prices.items():
+                    if sym in daemon.scanner_cache:
+                        daemon.scanner_cache[sym]["price"] = p
 
                 # 2. Periodic 15m Squeeze Indicator recalculation (every ~18s)
                 cycle_count += 1
