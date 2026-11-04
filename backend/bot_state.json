@@ -16,7 +16,7 @@
   "siphon_history": [],
   "equity_curve": [
     {
-      "ts": "00:00",
+      "ts": "START",
       "active": 10000.0,
       "total": 10000.0
     }

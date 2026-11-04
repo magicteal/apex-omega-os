@@ -117,8 +117,13 @@ class PyramidBrokerRouter:
                     ).to_dict()
                 )
 
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc).isoformat()
+        camp_id = f"TRD-{int(datetime.now(timezone.utc).timestamp())}"
         chandelier_stop = round(entry_price - direction * (self.CHANDELIER_ATR_MULT * atr), 4)
         self.active_campaign = {
+            "id": camp_id,
+            "entry_time": now_utc,
             "symbol": symbol,
             "side": side.upper(),
             "base_entry_price": round(entry_price, 4),
@@ -234,9 +239,14 @@ class PyramidBrokerRouter:
 
         camp = self.active_campaign
         realized_pnl = camp["total_unrealized_pnl_inr"]
+        from datetime import datetime, timezone
         summary = {
             "flattened": True,
+            "id": camp.get("id") or f"TRD-{int(datetime.now(timezone.utc).timestamp())}",
             "symbol": camp["symbol"],
+            "side": camp["side"],
+            "entry_time": camp.get("entry_time"),
+            "exit_time": datetime.now(timezone.utc).isoformat(),
             "side": camp["side"],
             "entry_price": camp.get("base_entry_price", camp["current_price"]),
             "filled_units": camp["filled_units"],

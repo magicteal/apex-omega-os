@@ -129,6 +129,7 @@ class ApexOmegaDaemon:
     def record_closed_trade(self, summary: Dict[str, Any]) -> None:
         if not summary or not summary.get("flattened"):
             return
+        now_iso = datetime.now(timezone.utc).isoformat()
         now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         entry_p = float(summary.get("entry_price", summary.get("exit_price", 0.0)))
         exit_p = float(summary.get("exit_price", 0.0))
@@ -142,9 +143,12 @@ class ApexOmegaDaemon:
             else:
                 pnl_pct = round(((entry_p - exit_p) / entry_p) * 100, 2)
 
+        trade_id = summary.get("id") or f"TRD-{int(datetime.now(timezone.utc).timestamp())}"
         trade_entry = {
-            "id": f"TRD-{int(datetime.now(timezone.utc).timestamp())}",
+            "id": trade_id,
             "timestamp": now_ts,
+            "entry_time": summary.get("entry_time") or now_iso,
+            "exit_time": summary.get("exit_time") or now_iso,
             "symbol": summary.get("symbol", "SOL/USDT:USDT"),
             "side": side,
             "entry_price": round(entry_p, 4),
@@ -154,6 +158,19 @@ class ApexOmegaDaemon:
             "pnl_pct": pnl_pct,
             "reason": summary.get("reason", "CLOSED"),
             "post_equity": round(self.state["active_equity"], 2),
+        }
+        self.last_event = {
+            "type": "EXIT",
+            "id": trade_id,
+            "symbol": trade_entry["symbol"],
+            "side": trade_entry["side"],
+            "entry_price": trade_entry["entry_price"],
+            "exit_price": trade_entry["exit_price"],
+            "filled_units": trade_entry["filled_units"],
+            "realized_pnl_inr": trade_entry["realized_pnl_inr"],
+            "pnl_pct": trade_entry["pnl_pct"],
+            "reason": trade_entry["reason"],
+            "timestamp": now_iso,
         }
         
         if "trade_history" not in self.state:
@@ -274,6 +291,7 @@ class ApexOmegaDaemon:
             "total_realized_pnl": total_realized_pnl,
             "siphon_history": self.state.get("siphon_history", []),
             "equity_curve": self.state.get("equity_curve", [])[-30:],
+            "last_event": self.last_event,
         }
 
 
@@ -325,13 +343,23 @@ async def startup_daemon() -> None:
                             kelly = daemon.kelly_ratchet.compute_allocation(
                                 daemon.state["active_equity"], daemon.state["peak_equity"]
                             )
-                            await daemon.router.initialize_campaign(
+                            camp = await daemon.router.initialize_campaign(
                                 symbol=sym,
                                 side="LONG" if "LONG" in asset.get("regime", "LONG") else "SHORT",
                                 entry_price=asset["price"],
                                 atr=asset.get("atr_14", asset["price"] * 0.015),
                                 total_notional_inr=kelly.notional_cap_inr,
                             )
+                            daemon.last_event = {
+                                "type": "ENTRY",
+                                "id": camp.get("id"),
+                                "symbol": sym,
+                                "side": camp.get("side", "LONG"),
+                                "entry_price": asset["price"],
+                                "effective_stop": camp.get("effective_stop"),
+                                "notional_inr": kelly.notional_cap_inr * 0.20,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
                             break
 
                 # 4. Stream Telemetry over WebSocket
