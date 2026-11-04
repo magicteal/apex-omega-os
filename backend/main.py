@@ -404,6 +404,7 @@ async def get_state() -> Dict[str, Any]:
 async def reset_portfolio() -> Dict[str, Any]:
     if daemon.router.active_campaign:
         await daemon.router.flatten_all(reason="RESET")
+    daemon.last_event = None
     daemon.state = {
         "mode": "PAPER",
         "active_equity": 10000.0,

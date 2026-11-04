@@ -46,6 +46,7 @@ export default function CommandCenterPage() {
   const [activeToast, setActiveToast] = useState<any>(null);
 
   const lastProcessedEventId = useRef<string | null>(null);
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -92,13 +93,27 @@ export default function CommandCenterPage() {
     };
   }, []);
 
-  // Handle trade entry / exit pop-up alert
+  // Handle trade entry / exit pop-up alert (Only for new live events, never on page refresh)
   const handleIncomingEvent = (event: any) => {
     if (!event || !event.timestamp) return;
     const eventKey = `${event.type}-${event.id || event.timestamp}`;
-    if (lastProcessedEventId.current === eventKey) return;
 
+    // Suppress historical events on initial page open or browser refresh
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      lastProcessedEventId.current = eventKey;
+      return;
+    }
+
+    if (lastProcessedEventId.current === eventKey) return;
     lastProcessedEventId.current = eventKey;
+
+    // Discard any stale events older than 30 seconds
+    try {
+      const ageMs = Date.now() - new Date(event.timestamp).getTime();
+      if (ageMs > 30000) return;
+    } catch (e) {}
+
     setActiveToast(event);
     playChime(event.type === "ENTRY" || (event.realized_pnl_inr || 0) >= 0);
 
