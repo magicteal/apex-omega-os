@@ -96,6 +96,7 @@ class ApexOmegaDaemon:
         self.router = PyramidBrokerRouter(mode=self.state.get("mode", "PAPER"))
         self.scanner_cache: Dict[str, Dict[str, Any]] = {}
         self.clients: List[WebSocket] = []
+        self.last_event = None
         self._seed_synthetic_universe()
 
     def _load_state(self) -> Dict[str, Any]:
