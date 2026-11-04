@@ -63,6 +63,31 @@ app.add_middleware(
 
 
 @app.get("/")
+@app.get("/api/debug-feed")
+async def debug_feed() -> Dict[str, Any]:
+    res = {}
+    import urllib.request
+    try:
+        # 1. Test public binance fapi without ccxt
+        req = urllib.request.Request("https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT", headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            import json as j
+            res["fapi_direct"] = j.loads(resp.read().decode())
+    except Exception as e:
+        res["fapi_direct_error"] = str(e)
+
+    # 2. Test CCXT
+    if ccxt_async is not None:
+        ex = ccxt_async.binanceusdm({"enableRateLimit": True, "timeout": 4000})
+        try:
+            tk = await ex.fetch_ticker("BTC/USDT:USDT")
+            res["ccxt_btc"] = tk.get("last")
+        except Exception as e:
+            res["ccxt_error"] = str(e)
+        finally:
+            await ex.close()
+    return res
+
 @app.get("/health")
 async def health_check() -> Dict[str, Any]:
     return {
