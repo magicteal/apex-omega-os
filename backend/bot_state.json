@@ -1,0 +1,25 @@
+{
+  "mode": "PAPER",
+  "active_equity": 10000.0,
+  "peak_equity": 10000.0,
+  "vault_balance": 0.0,
+  "principal_siphoned": false,
+  "next_siphon_milestone": 20000.0,
+  "historical_trade_returns_pct": [
+    0.035,
+    -0.012,
+    0.052,
+    0.028,
+    -0.01,
+    0.065
+  ],
+  "siphon_history": [],
+  "equity_curve": [
+    {
+      "ts": "00:00",
+      "active": 10000.0,
+      "total": 10000.0
+    }
+  ],
+  "trade_history": []
+}
